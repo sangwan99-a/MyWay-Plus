@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'screens/global_transit_explorer.dart';
 
 void main() => runApp(const MyWayApp());
 
@@ -130,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       border: Border.all(color: const Color(0xFF34452A))),
     child: const Row(children: [
       Icon(Icons.circle, color: lime, size: 6), SizedBox(width: 7),
-      Text('DEMO PREVIEW', style: TextStyle(color: lime, fontSize: 9, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
+      Text('GLOBAL DISCOVERY', style: TextStyle(color: lime, fontSize: 9, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
     ]),
   );
 
@@ -163,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Positioned(left: 26, bottom: 24, child: Row(children: [
             const Icon(Icons.wb_sunny_outlined, color: lime, size: 15),
             const SizedBox(width: 8),
-            const Text('CANBERRA  ·  DEMO', style: TextStyle(fontSize: 10, color: paper, letterSpacing: 1.5)),
+            const Text('WORLDWIDE TRANSIT  ·  OPEN DATA', style: TextStyle(fontSize: 10, color: paper, letterSpacing: 1.5)),
           ])),
           Positioned(right: 24, bottom: 24, child: Container(
             padding: const EdgeInsets.all(10),
@@ -229,8 +230,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   );
 
   Widget _searchButton() => FilledButton.icon(
-    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Journey planning will connect to live transit data in the next integration step.'))),
+    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => GlobalTransitExplorer(initialSearch: _to.text))),
     style: FilledButton.styleFrom(backgroundColor: lime, foregroundColor: ink,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 19),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13))),
