@@ -29,6 +29,9 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   bool _searchingPlaces = false;
   List<TransitStop> _stops = [];
   List<TransitRoute> _routes = [];
+  TransitStop? _selectedStop;
+  List<TransitDeparture> _departures = [];
+  bool _loadingDepartures = false;
   bool _loading = false;
   String? _error;
   String _place = 'Find transit around you';
@@ -73,6 +76,8 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       _placeResults = [];
       _stops = [];
       _routes = [];
+      _selectedStop = null;
+      _departures = [];
       _searched = false;
       _error = null;
     });
@@ -94,12 +99,28 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       }
       final p = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)));
       if (!mounted) return;
-      setState(() { _position = p; _manualCenter = null; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
+      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
       _map.move(LatLng(p.latitude, p.longitude), 15);
       await _loadNearby();
       if (_search.text.trim().isNotEmpty) await _searchRoutes();
     } catch (e) {
       if (mounted) setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
+    }
+  }
+
+  Future<void> _showDepartures(TransitStop stop) async {
+    _map.move(LatLng(stop.lat, stop.lon), 17);
+    setState(() {
+      _selectedStop = stop;
+      _departures = [];
+      _loadingDepartures = stop.scheduleKey != null;
+    });
+    if (stop.scheduleKey == null) return;
+    try {
+      final departures = await _service.departuresForStop(stop);
+      if (mounted) setState(() { _departures = departures; _loadingDepartures = false; });
+    } catch (e) {
+      if (mounted) setState(() { _loadingDepartures = false; _error = 'Schedule lookup unavailable: ${e.toString().replaceFirst('Exception: ', '')}'; });
     }
   }
 
@@ -210,18 +231,41 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
           if (_stops.isEmpty && !_loading) Text(_searched ? 'No mapped bus stops found nearby. Try a wider area or another route.' : 'Search for any city above, or use the location button to find buses near you.', style: const TextStyle(color: _muted, fontSize: 12)),
           if (_stops.isNotEmpty) SizedBox(height: 116, child: ListView.separated(scrollDirection: Axis.horizontal, itemCount: _stops.length, separatorBuilder: (_, __) => const SizedBox(width: 8), itemBuilder: (context, i) {
             final s = _stops[i];
-            return InkWell(onTap: () => _map.move(LatLng(s.lat, s.lon), 17), child: Container(width: 210, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(13), border: Border.all(color: _line)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            return InkWell(onTap: () => _showDepartures(s), child: Container(width: 210, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(13), border: Border.all(color: _line)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Icon(Icons.directions_bus, color: _lime, size: 18), const SizedBox(height: 7),
               Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _paper, fontWeight: FontWeight.w600, fontSize: 12)),
               const Spacer(), Text('${s.lat.toStringAsFixed(4)}, ${s.lon.toStringAsFixed(4)}', style: const TextStyle(color: _muted, fontSize: 9)),
             ])));
           })),
+          if (_selectedStop != null) ...[
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: Text('DEPARTURES · ${_selectedStop!.name.toUpperCase()}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _lime, fontSize: 9, letterSpacing: 1.4, fontWeight: FontWeight.w800))),
+              if (_loadingDepartures) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: _lime)),
+            ]),
+            const SizedBox(height: 5),
+            if (_selectedStop!.scheduleKey == null)
+              const Text('This mapped stop has no linked GTFS schedule in Transitland yet.', style: TextStyle(color: _muted, fontSize: 11))
+            else if (!_loadingDepartures && _departures.isEmpty)
+              const Text('No published departures found for this stop in the current service window.', style: TextStyle(color: _muted, fontSize: 11))
+            else
+              ..._departures.take(4).map((d) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(children: [
+                  SizedBox(width: 54, child: Text(d.displayTime, style: const TextStyle(color: _paper, fontSize: 13, fontWeight: FontWeight.w700))),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF252B1D), borderRadius: BorderRadius.circular(6)), child: Text(d.route, style: const TextStyle(color: _lime, fontSize: 10, fontWeight: FontWeight.w700))),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(d.destination, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _paper, fontSize: 11))),
+                  Text(d.isRealtime ? 'LIVE UPDATE' : 'SCHEDULED', style: TextStyle(color: d.isRealtime ? _lime : _muted, fontSize: 8, fontWeight: FontWeight.w800)),
+                ]),
+              )),
+          ],
           if (_routes.isNotEmpty) ...[
             const SizedBox(height: 12), const Text('ROUTE MATCHES', style: TextStyle(color: _lime, fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w800)),
             ..._routes.take(5).map((r) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: CircleAvatar(backgroundColor: const Color(0xFF252B1D), child: Text(r.ref.isEmpty ? 'BUS' : r.ref, style: const TextStyle(color: _lime, fontSize: 11))), title: Text(r.name, style: const TextStyle(color: _paper, fontSize: 12)), subtitle: Text(r.operator, style: const TextStyle(color: _muted, fontSize: 10)))),
           ],
           const SizedBox(height: 6),
-          const Text('Mapped stops/routes from OpenStreetMap. Live vehicle GPS and arrival predictions require feeds published by local transit operators.', style: TextStyle(color: _muted, fontSize: 10)),
+          const Text('Transitland GTFS schedules and OpenStreetMap mapped stops. Live estimates appear only when an operator supplies matching GTFS Realtime updates; vehicle GPS is not shown yet.', style: TextStyle(color: _muted, fontSize: 10)),
         ])),
       ])),
     );
