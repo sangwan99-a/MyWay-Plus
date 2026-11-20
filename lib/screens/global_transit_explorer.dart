@@ -41,7 +41,6 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   void dispose() {
     _search.dispose();
     _service.dispose();
-    _map.dispose();
     super.dispose();
   }
 
