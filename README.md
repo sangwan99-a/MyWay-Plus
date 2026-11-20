@@ -42,10 +42,10 @@ The repository includes a Vercel build script that installs the Flutter stable S
 ## Global transit discovery (initial integration)
 
 - Device GPS is requested only after the user opens the global transit explorer. Location permission is optional; the user can deny it.
-- Nearby mapped bus stops and searchable bus route relations are discovered through the OpenStreetMap Overpass API, using a 1.2 km stop radius and a 10 km route-search radius.
+- Nearby stops and bus routes are queried from the Transitland v2 REST API using the project-configured API key, then supplemented with OpenStreetMap Overpass results. Stop discovery uses a 1.2 km radius and route search uses up to a 10 km radius.
 - The Flutter map uses OpenStreetMap tiles and displays map attribution.
-- This first provider integration is **mapped/static data**, not live vehicle tracking. OpenStreetMap does not supply reliable vehicle GPS positions, real-time ETAs, or operator service alerts.
-- Global real-time coverage requires agency-published GTFS Realtime feeds (VehiclePositions, TripUpdates and Alerts), or a licensed aggregator. Mobility Database catalogs thousands of feeds across 100+ countries; Transitland provides an API but requires an API key and has plan quotas. Provider adapters, feed ingestion, caching, API-key configuration and live vehicle markers remain the next backend milestone.
+- Transitland and OpenStreetMap results are primarily mapped/scheduled transit data. This integration does **not** yet display live vehicle GPS positions or real-time ETAs. Those require accessible GTFS Realtime VehiclePositions and TripUpdates feeds.
+- Global real-time coverage requires agency-published GTFS Realtime feeds (VehiclePositions, TripUpdates and Alerts), or a licensed aggregator. Mobility Database catalogs thousands of feeds across 100+ countries. Transitland API usage is subject to plan quotas. Provider-specific realtime feed ingestion, caching and live vehicle markers remain future work.
 - Coverage varies by city and by what local operators publish. If a city has no mapped stops or an agency does not publish an accessible feed, MyWay+ must say so rather than fabricate buses or arrival times.
 
 ### Location permissions
@@ -59,4 +59,4 @@ After generating native folders with `flutter create . --platforms=web,android,i
 - [Transitland API documentation](https://www.transit.land/documentation/rest-api)
 - [OpenStreetMap and Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API)
 
-Respect each provider's rate limits, terms, attribution and data freshness. Do not expose private API keys in the Flutter client.
+Respect each provider's rate limits, terms, attribution and data freshness. The Transitland key is currently embedded in the Flutter client at the project owner's request for zero-config deployment; it is extractable from distributed app builds and should be rotated if abused. A backend proxy is recommended before public production use.
