@@ -1,46 +1,42 @@
 # MyWay+ — Move beyond
 
-A cinematic, 3D-first hybrid transit experience for Canberra. The product is designed as one shared application for the web, Android and iOS.
+A cinematic transit companion built with **Flutter and Dart**. The same Flutter application targets web, Android and iOS.
 
-## Platforms
+## Stack
 
-- Web: responsive browser experience via Expo Web / React Native Web.
-- Android: native application via Expo and React Native.
-- iOS: native application via Expo and React Native.
+- Flutter / Dart (single shared codebase)
+- Material 3 with a custom near-black, graphite and electric-lime design system
+- Animated city and route illustration rendered with Flutter CustomPainter
+- No React, React Native, Expo, npm runtime dependencies or third-party UI packages
 
 ## Run locally
 
+Install the Flutter SDK, then:
+
 ```bash
-npm install
-npx expo install --fix
-npx expo start
+flutter doctor
+flutter pub get
+flutter analyze
+flutter run -d chrome
 ```
 
-Then press `w` for web, `a` for Android, or `i` for the iOS simulator (macOS with Xcode required for local iOS builds).
+For Android, connect a device or start an emulator and run `flutter run`.
+For iOS, use macOS with Xcode installed and run `flutter run`.
 
-## Architecture
+## Build
 
-- Expo SDK 58 and Expo Router.
-- React Native shared interface and application logic.
-- React Native Web for browser support.
-- Three.js / React Three Fiber for the shared 3D transit world.
-- Platform-specific 3D Canvas adapters: web renderer with Bloom, Noise and Vignette; native renderer tuned for mobile GPU budgets.
-- Reanimated and Expo native modules for platform interactions.
+```bash
+flutter build web --release
+flutter build apk --release
+flutter build ios --release
+```
 
-## Design direction
+The web build is generated in `build/web`. Android and iOS builds require their respective Flutter platform toolchains. If this repository was not generated with platform folders, run `flutter create . --platforms=web,android,ios` once after installing Flutter.
 
-The visual language intentionally follows the existing premium-portfolio project: near-black monochrome palette, Inter Tight / Instrument Serif / JetBrains Mono typography, cinematic 3D scene composition, floating particles, atmospheric depth, smooth transitions and restrained editorial layouts. It is adapted for a transit product rather than copying portfolio content.
+## Vercel
 
-## Current state
+The repository includes a Vercel build script that installs the Flutter stable SDK, resolves Dart packages from `pubspec.yaml`, and builds Flutter Web into `build/web`. No npm install is needed.
 
-The repository now contains the universal Expo foundation and first cross-platform visual experience. Route cards and journey inputs are sample UI data only. Live departures, vehicle positions, fares, payments, authentication and push notifications are not connected yet.
+## Current product scope
 
-## Next milestones
-
-1. Verify Expo SDK package compatibility with `npx expo install --fix` and run web, Android and iOS development builds.
-2. Connect authoritative Transport Canberra / ACT open-data sources.
-3. Implement map, stop discovery, live arrivals, journey alternatives and accessible routing.
-4. Add secure accounts, favourites, travel history, native notifications and supported payment integrations.
-5. Add automated tests, CI, EAS build profiles and store release configuration.
-
-Never display sample arrival estimates as live data. Add data source attribution and freshness indicators when official feeds are integrated.
+The current screen includes a responsive journey planner, sample nearby departures, and an animated city/route scene. The departure times and location labels are illustrative only. Live transport APIs, real GPS, ticketing, accounts, and push notifications are future integration work.

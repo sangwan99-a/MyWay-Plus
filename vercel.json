@@ -1,0 +1,6 @@
+{
+  "installCommand": "echo 'Flutter project: skipping npm install'",
+  "buildCommand": "bash scripts/vercel_build.sh",
+  "outputDirectory": "build/web",
+  "framework": null
+}
