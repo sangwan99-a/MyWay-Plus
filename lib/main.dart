@@ -66,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 SliverToBoxAdapter(child: _header(wide)),
                 SliverToBoxAdapter(child: _hero(wide)),
                 SliverToBoxAdapter(child: _planner(wide)),
-                SliverToBoxAdapter(child: _sectionHeading('LIVE AROUND YOU', 'Nearby departures')),
+                SliverToBoxAdapter(child: _sectionHeading('SAMPLE DEPARTURES', 'Nearby departures')),
                 SliverToBoxAdapter(child: _departures(wide)),
                 SliverToBoxAdapter(child: _footer()),
                 const SliverToBoxAdapter(child: SizedBox(height: 30)),
@@ -130,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       border: Border.all(color: const Color(0xFF34452A))),
     child: const Row(children: [
       Icon(Icons.circle, color: lime, size: 6), SizedBox(width: 7),
-      Text('NETWORK LIVE', style: TextStyle(color: lime, fontSize: 9, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
+      Text('DEMO PREVIEW', style: TextStyle(color: lime, fontSize: 9, letterSpacing: 1.3, fontWeight: FontWeight.w700)),
     ]),
   );
 
@@ -163,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Positioned(left: 26, bottom: 24, child: Row(children: [
             const Icon(Icons.wb_sunny_outlined, color: lime, size: 15),
             const SizedBox(width: 8),
-            const Text('CANBERRA  ·  18°', style: TextStyle(fontSize: 10, color: paper, letterSpacing: 1.5)),
+            const Text('CANBERRA  ·  DEMO', style: TextStyle(fontSize: 10, color: paper, letterSpacing: 1.5)),
           ])),
           Positioned(right: 24, bottom: 24, child: Container(
             padding: const EdgeInsets.all(10),
@@ -260,9 +260,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _departures(bool wide) {
     final items = [
-      ('R2', 'City · Belconnen', '2 min', 'ON TIME', 'Platform 1'),
-      ('6', 'Woden · City', '6 min', 'ON TIME', 'Platform 3'),
-      (' Rapid 10', 'Civic · Gungahlin', '11 min', 'TRACKING', 'Platform 2'),
+      ('R2', 'City · Belconnen', '2 min', 'SAMPLE', 'Platform 1'),
+      ('6', 'Woden · City', '6 min', 'SAMPLE', 'Platform 3'),
+      (' Rapid 10', 'Civic · Gungahlin', '11 min', 'SAMPLE', 'Platform 2'),
     ];
     return Padding(
       padding: EdgeInsets.fromLTRB(wide ? 42 : 22, 0, wide ? 42 : 22, 20),
