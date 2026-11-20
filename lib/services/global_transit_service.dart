@@ -1,6 +1,33 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+
+class TransitPlace {
+  const TransitPlace({required this.name, required this.displayName, required this.latitude, required this.longitude});
+  final String name;
+  final String displayName;
+  final double latitude;
+  final double longitude;
+
+  factory TransitPlace.fromPhoton(Map<String, dynamic> feature) {
+    final properties = Map<String, dynamic>.from(feature['properties'] as Map? ?? {});
+    final geometry = Map<String, dynamic>.from(feature['geometry'] as Map? ?? {});
+    final coordinates = geometry['coordinates'] as List? ?? const [];
+    if (coordinates.length < 2 || coordinates[0] is! num || coordinates[1] is! num) {
+      throw const FormatException('Place has no coordinates');
+    }
+    final parts = [properties['name'], properties['city'], properties['state'], properties['country']]
+        .where((value) => value != null && value.toString().trim().isNotEmpty)
+        .map((value) => value.toString()).toList();
+    return TransitPlace(
+      name: (properties['name'] ?? properties['city'] ?? 'Selected place').toString(),
+      displayName: parts.toSet().join(', '),
+      longitude: (coordinates[0] as num).toDouble(),
+      latitude: (coordinates[1] as num).toDouble(),
+    );
+  }
+}
+
 class TransitStop {
   const TransitStop({required this.id, required this.name, required this.lat, required this.lon, required this.tags});
   final String id;
@@ -74,6 +101,25 @@ class GlobalTransitService {
   // Public client-side key requested by the project owner. Anyone inspecting
   // the compiled app can extract it; rotate it if it is abused.
   static const _transitlandApiKey = 'iwa_live_tlv2api_54c2b783d0ac275320ed2e6c96e879024b74ece027cfc1e20CmjjZ';
+
+
+  Future<List<TransitPlace>> searchPlaces(String query) async {
+    final term = query.trim();
+    if (term.length < 2) return const [];
+    final uri = Uri.https('photon.komoot.io', '/api/', {'q': term, 'limit': '7', 'lang': 'en'});
+    final response = await _client.get(uri, headers: {'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw Exception('Place search is temporarily unavailable (HTTP ${response.statusCode}).');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final features = (data['features'] as List? ?? []).whereType<Map<String, dynamic>>();
+    final places = <TransitPlace>[];
+    for (final feature in features) {
+      try { places.add(TransitPlace.fromPhoton(feature)); } catch (_) { /* Ignore malformed geocoder results. */ }
+    }
+    return places;
+  }
 
   Future<List<TransitStop>> nearbyStops(double lat, double lon, {int radius = 1200}) async {
     final transitlandStops = await _tryTransitlandStops(lat, lon, radius);
