@@ -20,6 +20,21 @@ class TransitStop {
       tags: tags,
     );
   }
+
+  factory TransitStop.fromTransitland(Map<String, dynamic> e) {
+    final geometry = e['geometry'] as Map<String, dynamic>?;
+    final coordinates = geometry?['coordinates'] as List?;
+    final lat = e['stop_lat'] ?? e['lat'] ?? (coordinates != null && coordinates.length > 1 ? coordinates[1] : null);
+    final lon = e['stop_lon'] ?? e['lon'] ?? (coordinates != null && coordinates.isNotEmpty ? coordinates[0] : null);
+    if (lat is! num || lon is! num) throw const FormatException('Stop has no coordinates');
+    return TransitStop(
+      id: 'transitland/${e['id'] ?? e['onestop_id'] ?? '${lat}_${lon}'}',
+      name: (e['stop_name'] ?? e['name'] ?? e['stop_code'] ?? 'Unnamed transit stop').toString(),
+      lat: lat.toDouble(),
+      lon: lon.toDouble(),
+      tags: e,
+    );
+  }
 }
 
 class TransitRoute {
@@ -28,41 +43,131 @@ class TransitRoute {
   final String ref;
   final String name;
   final String operator;
+
   factory TransitRoute.fromElement(Map<String, dynamic> e) {
     final t = Map<String, dynamic>.from(e['tags'] as Map? ?? {});
-    return TransitRoute(id: '${e['type']}/${e['id']}', ref: (t['ref'] ?? '').toString(),
-      name: (t['name'] ?? 'Bus route').toString(), operator: (t['operator'] ?? 'Operator not listed').toString());
+    return TransitRoute(
+      id: '${e['type']}/${e['id']}',
+      ref: (t['ref'] ?? '').toString(),
+      name: (t['name'] ?? 'Bus route').toString(),
+      operator: (t['operator'] ?? 'Operator not listed').toString(),
+    );
+  }
+
+  factory TransitRoute.fromTransitland(Map<String, dynamic> e) {
+    final agency = e['agency'] as Map<String, dynamic>?;
+    return TransitRoute(
+      id: 'transitland/${e['id'] ?? e['onestop_id'] ?? e['route_id'] ?? ''}',
+      ref: (e['route_short_name'] ?? e['route_id'] ?? '').toString(),
+      name: (e['route_long_name'] ?? e['route_short_name'] ?? e['route_id'] ?? 'Bus route').toString(),
+      operator: (e['agency_name'] ?? agency?['agency_name'] ?? agency?['name'] ?? 'Operator not listed').toString(),
+    );
   }
 }
 
 class GlobalTransitService {
   GlobalTransitService({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
+
   static const _overpass = 'https://overpass-api.de/api/interpreter';
+  static const _transitland = 'https://transit.land/api/v2/rest';
+  // Public client-side key requested by the project owner. Anyone inspecting
+  // the compiled app can extract it; rotate it if it is abused.
+  static const _transitlandApiKey = 'iwa_live_tlv2api_54c2b783d0ac275320ed2e6c96e879024b74ece027cfc1e20CmjjZ';
 
   Future<List<TransitStop>> nearbyStops(double lat, double lon, {int radius = 1200}) async {
-    final query = '[out:json][timeout:25];(node["highway"="bus_stop"](around:$radius,$lat,$lon);node["public_transport"="platform"]["bus"="yes"](around:$radius,$lat,$lon);way["highway"="bus_stop"](around:$radius,$lat,$lon););out center tags;';
-    final json = await _overpassQuery(query);
-    final items = (json['elements'] as List? ?? []).whereType<Map<String, dynamic>>();
-    final stops = <TransitStop>[];
-    for (final e in items) {
-      try { stops.add(TransitStop.fromElement(e)); } catch (_) { /* Ignore incomplete map features. */ }
+    final transitlandStops = await _tryTransitlandStops(lat, lon, radius);
+    final osmStops = await _tryOsmStops(lat, lon, radius);
+    final merged = <String, TransitStop>{};
+    for (final stop in [...transitlandStops, ...osmStops]) {
+      merged.putIfAbsent(stop.id, () => stop);
     }
-    return stops;
+    return merged.values.toList();
+  }
+
+  Future<List<TransitStop>> _tryTransitlandStops(double lat, double lon, int radius) async {
+    try {
+      final data = await _transitlandGet('/stops', {
+        'lat': '$lat', 'lon': '$lon', 'radius': '${radius.clamp(1, 10000)}',
+        'limit': '100', 'include_routes': 'true',
+      });
+      final items = (data['stops'] as List? ?? []).whereType<Map<String, dynamic>>();
+      final stops = <TransitStop>[];
+      for (final item in items) {
+        try { stops.add(TransitStop.fromTransitland(item)); } catch (_) { /* Skip incomplete feed records. */ }
+      }
+      return stops;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<TransitStop>> _tryOsmStops(double lat, double lon, int radius) async {
+    try {
+      final query = '[out:json][timeout:25];(node["highway"="bus_stop"](around:$radius,$lat,$lon);node["public_transport"="platform"]["bus"="yes"](around:$radius,$lat,$lon);way["highway"="bus_stop"](around:$radius,$lat,$lon););out center tags;';
+      final json = await _overpassQuery(query);
+      final items = (json['elements'] as List? ?? []).whereType<Map<String, dynamic>>();
+      final stops = <TransitStop>[];
+      for (final e in items) {
+        try { stops.add(TransitStop.fromElement(e)); } catch (_) { /* Ignore incomplete map features. */ }
+      }
+      return stops;
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<List<TransitRoute>> searchBusRoutes(double lat, double lon, String term, {int radius = 10000}) async {
-    final escaped = term.replaceAll(RegExp(r'[^a-zA-Z0-9 -]'), '').trim();
-    if (escaped.isEmpty) return const [];
-    final query = '[out:json][timeout:25];(relation["route"="bus"]["ref"~"$escaped",i](around:$radius,$lat,$lon);relation["route"="bus"]["name"~"$escaped",i](around:$radius,$lat,$lon);relation["route_master"="bus"]["ref"~"$escaped",i](around:$radius,$lat,$lon););out tags;';
-    final json = await _overpassQuery(query);
-    final items = (json['elements'] as List? ?? []).whereType<Map<String, dynamic>>();
-    return items.map(TransitRoute.fromElement).toList();
+    final searchTerm = term.trim();
+    if (searchTerm.isEmpty) return const [];
+    final transitlandRoutes = await _tryTransitlandRoutes(lat, lon, searchTerm, radius);
+    final osmRoutes = await _tryOsmRoutes(lat, lon, searchTerm, radius);
+    final merged = <String, TransitRoute>{};
+    for (final route in [...transitlandRoutes, ...osmRoutes]) {
+      merged.putIfAbsent(route.id, () => route);
+    }
+    return merged.values.toList();
+  }
+
+  Future<List<TransitRoute>> _tryTransitlandRoutes(double lat, double lon, String term, int radius) async {
+    try {
+      final data = await _transitlandGet('/routes', {
+        'lat': '$lat', 'lon': '$lon', 'radius': '${radius.clamp(1, 10000)}',
+        'route_types': '3', 'search': term, 'limit': '100',
+      });
+      final items = (data['routes'] as List? ?? []).whereType<Map<String, dynamic>>();
+      return items.map(TransitRoute.fromTransitland).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<TransitRoute>> _tryOsmRoutes(double lat, double lon, String term, int radius) async {
+    try {
+      final escaped = term.replaceAll(RegExp(r'[^a-zA-Z0-9 -]'), '').trim();
+      if (escaped.isEmpty) return const [];
+      final query = '[out:json][timeout:25];(relation["route"="bus"]["ref"~"$escaped",i](around:$radius,$lat,$lon);relation["route"="bus"]["name"~"$escaped",i](around:$radius,$lat,$lon);relation["route_master"="bus"]["ref"~"$escaped",i](around:$radius,$lat,$lon););out tags;';
+      final json = await _overpassQuery(query);
+      final items = (json['elements'] as List? ?? []).whereType<Map<String, dynamic>>();
+      return items.map(TransitRoute.fromElement).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<Map<String, dynamic>> _transitlandGet(String path, Map<String, String> params) async {
+    final uri = Uri.parse('$_transitland$path').replace(queryParameters: params);
+    final response = await _client.get(uri, headers: {'apikey': _transitlandApiKey, 'Accept': 'application/json'})
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw Exception('Transitland request failed (HTTP ${response.statusCode}).');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> _overpassQuery(String query) async {
     final response = await _client.post(Uri.parse(_overpass),
-      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'User-Agent': 'MyWayPlus/2.2 (global transit discovery)'},
+      headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
       body: {'data': query}).timeout(const Duration(seconds: 35));
     if (response.statusCode != 200) {
       throw Exception('OpenStreetMap transit data is temporarily unavailable (HTTP ${response.statusCode}).');
