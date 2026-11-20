@@ -1,39 +1,46 @@
 # MyWay+ — Move beyond
 
-A premium, 3D-first transit experience concept for Canberra. Built with React, Vite, Three.js and React Three Fiber.
+A cinematic, 3D-first hybrid transit experience for Canberra. The product is designed as one shared application for the web, Android and iOS.
+
+## Platforms
+
+- Web: responsive browser experience via Expo Web / React Native Web.
+- Android: native application via Expo and React Native.
+- iOS: native application via Expo and React Native.
 
 ## Run locally
 
 ```bash
 npm install
-npm run dev
+npx expo install --fix
+npx expo start
 ```
 
-## Build
+Then press `w` for web, `a` for Android, or `i` for the iOS simulator (macOS with Xcode required for local iOS builds).
 
-```bash
-npm run build
-```
+## Architecture
 
-## Current experience
+- Expo SDK 58 and Expo Router.
+- React Native shared interface and application logic.
+- React Native Web for browser support.
+- Three.js / React Three Fiber for the shared 3D transit world.
+- Platform-specific 3D Canvas adapters: web renderer with Bloom, Noise and Vignette; native renderer tuned for mobile GPU budgets.
+- Reanimated and Expo native modules for platform interactions.
 
-- Cinematic 3D transit scene with an animated bus, procedural city blocks, orbital route lines and atmospheric lighting.
-- Responsive dashboard with journey planner interaction, service cards, saved routes and navigation.
-- Motion design and a dark, high-contrast visual system.
-- Clearly labelled sample data; no live vehicle feed or fare integration is claimed yet.
+## Design direction
 
-## Roadmap
+The visual language intentionally follows the existing premium-portfolio project: near-black monochrome palette, Inter Tight / Instrument Serif / JetBrains Mono typography, cinematic 3D scene composition, floating particles, atmospheric depth, smooth transitions and restrained editorial layouts. It is adapted for a transit product rather than copying portfolio content.
 
-1. Connect authoritative Transport Canberra / ACT open-data feeds for routes, stops, timetables, service alerts and vehicle positions where available.
-2. Replace sample departures with live arrival predictions and freshness indicators.
-3. Add an interactive geographic map, stop search, accessible journey options and multi-leg trip planning.
-4. Add secure accounts, saved journeys, notifications and travel/payment integrations where supported by official providers.
-5. Add an admin/operations view, observability, automated tests and production deployment.
+## Current state
 
-## Important data note
+The repository now contains the universal Expo foundation and first cross-platform visual experience. Route cards and journey inputs are sample UI data only. Live departures, vehicle positions, fares, payments, authentication and push notifications are not connected yet.
 
-The initial route cards and arrival times are illustrative UI data. Before public launch, integrate verified official data sources and show timestamps, source attribution and stale-data states. Do not use this concept UI to make real-world travel decisions.
+## Next milestones
 
-## Stack
+1. Verify Expo SDK package compatibility with `npx expo install --fix` and run web, Android and iOS development builds.
+2. Connect authoritative Transport Canberra / ACT open-data sources.
+3. Implement map, stop discovery, live arrivals, journey alternatives and accessible routing.
+4. Add secure accounts, favourites, travel history, native notifications and supported payment integrations.
+5. Add automated tests, CI, EAS build profiles and store release configuration.
 
-React 18 · Vite · Three.js · React Three Fiber · Drei · Framer Motion · Lucide
+Never display sample arrival estimates as live data. Add data source attribution and freshness indicators when official feeds are integrated.
