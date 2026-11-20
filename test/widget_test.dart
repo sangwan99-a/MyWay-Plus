@@ -14,6 +14,6 @@ void main() {
     expect(find.text('PLAN A JOURNEY'), findsOneWidget);
     expect(find.text('Nearby departures'), findsOneWidget);
     expect(find.text('FIND ROUTE'), findsOneWidget);
-    expect(find.text('DEMO PREVIEW'), findsOneWidget);
+    expect(find.text('GLOBAL DISCOVERY'), findsOneWidget);
   });
 }
