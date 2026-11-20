@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 
 function Bus() {
-  const root = useRef<THREE.Group>(null);
+  const root = useRef<THREE.Group | null>(null);
   const wheelRefs = useRef<THREE.Mesh[]>([]);
   useFrame((state, dt) => {
     if (root.current) {
@@ -30,7 +30,7 @@ function City() {
   </group>)}</group>;
 }
 function Dust() {
-  const ref=useRef<THREE.Points>(null);
+  const ref=useRef<THREE.Points | null>(null);
   const positions=useMemo(()=>{const a=new Float32Array(420*3);for(let i=0;i<420;i++){a[i*3]=(Math.random()-.5)*18;a[i*3+1]=(Math.random()-.5)*8;a[i*3+2]=(Math.random()-.5)*18;}return a;},[]);
   useFrame((_,dt)=>{if(ref.current)ref.current.rotation.y+=dt*.008;});
   return <points ref={ref}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions,3]}/></bufferGeometry><pointsMaterial color="#d9d9e0" size={.018} transparent opacity={.62} sizeAttenuation/></points>;
