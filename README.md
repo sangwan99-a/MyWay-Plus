@@ -41,9 +41,9 @@ The repository includes a Vercel build script that installs the Flutter stable S
 
 ## Global transit discovery (initial integration)
 
-- Device GPS is requested only after the user opens the global transit explorer. Location permission is optional; the user can deny it.
+- Device GPS is requested when the user opens the global transit explorer. Location permission is optional; users can deny it and search for a city manually. Worldwide place search uses the Photon geocoding API, and selecting a result recentres the map and loads nearby transit data.
 - Nearby stops and bus routes are queried from the Transitland v2 REST API using the project-configured API key, then supplemented with OpenStreetMap Overpass results. Stop discovery uses a 1.2 km radius and route search uses up to a 10 km radius.
-- The Flutter map uses OpenStreetMap tiles and displays map attribution.
+- The Flutter map uses OpenStreetMap tiles and displays map attribution. Place search is powered by Photon (OpenStreetMap-based geocoding); results depend on mapped place data and geocoder availability.
 - Transitland and OpenStreetMap results are primarily mapped/scheduled transit data. This integration does **not** yet display live vehicle GPS positions or real-time ETAs. Those require accessible GTFS Realtime VehiclePositions and TripUpdates feeds.
 - Global real-time coverage requires agency-published GTFS Realtime feeds (VehiclePositions, TripUpdates and Alerts), or a licensed aggregator. Mobility Database catalogs thousands of feeds across 100+ countries. Transitland API usage is subject to plan quotas. Provider-specific realtime feed ingestion, caching and live vehicle markers remain future work.
 - Coverage varies by city and by what local operators publish. If a city has no mapped stops or an agency does not publish an accessible feed, MyWay+ must say so rather than fabricate buses or arrival times.
