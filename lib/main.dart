@@ -258,37 +258,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     ]),
   );
 
-  Widget _departures(bool wide) {
-    final items = [
-      ('R2', 'City · Belconnen', '2 min', 'SAMPLE', 'Platform 1'),
-      ('6', 'Woden · City', '6 min', 'SAMPLE', 'Platform 3'),
-      (' Rapid 10', 'Civic · Gungahlin', '11 min', 'SAMPLE', 'Platform 2'),
-    ];
-    return Padding(
-      padding: EdgeInsets.fromLTRB(wide ? 42 : 22, 0, wide ? 42 : 22, 20),
-      child: Column(children: items.map((e) => Container(
-        margin: const EdgeInsets.only(bottom: 9), padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(color: panel, border: Border.all(color: line), borderRadius: BorderRadius.circular(16)),
-        child: Row(children: [
-          Container(width: 43, height: 43, alignment: Alignment.center,
-            decoration: BoxDecoration(color: const Color(0xFF22291C), borderRadius: BorderRadius.circular(12)),
-            child: Text(e.$1.trim(), style: const TextStyle(color: lime, fontWeight: FontWeight.w900, fontSize: 13))),
-          const SizedBox(width: 13),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(e.$2, style: const TextStyle(color: paper, fontWeight: FontWeight.w600, fontSize: 13)),
-            const SizedBox(height: 5),
-            Text(e.$5, style: const TextStyle(color: muted, fontSize: 10)),
-          ])),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(e.$3, style: const TextStyle(color: paper, fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(e.$4, style: const TextStyle(color: lime, fontSize: 8, letterSpacing: 1, fontWeight: FontWeight.w800)),
-          ]),
-          const SizedBox(width: 8), const Icon(Icons.chevron_right, color: muted, size: 18),
-        ]),
-      )).toList()),
-    );
-  }
+  Widget _departures(bool wide) => Padding(
+    padding: EdgeInsets.fromLTRB(wide ? 42 : 22, 0, wide ? 42 : 22, 20),
+    child: Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: panel, border: Border.all(color: line), borderRadius: BorderRadius.circular(18)),
+      child: Row(children: [
+        Container(width: 46, height: 46, decoration: BoxDecoration(color: const Color(0xFF22291C), borderRadius: BorderRadius.circular(14)),
+          child: const Icon(Icons.public, color: lime)),
+        const SizedBox(width: 14),
+        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Explore transit worldwide', style: TextStyle(color: paper, fontSize: 14, fontWeight: FontWeight.w700)),
+          SizedBox(height: 5),
+          Text('Find mapped bus stops and routes near your GPS location.', style: TextStyle(color: muted, fontSize: 11)),
+        ])),
+        IconButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GlobalTransitExplorer())),
+          icon: const Icon(Icons.arrow_forward, color: lime)),
+      ]),
+    ),
+  );
 
   Widget _footer() => const Padding(
     padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
