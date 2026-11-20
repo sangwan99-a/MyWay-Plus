@@ -29,8 +29,9 @@ class TransitPlace {
 }
 
 class TransitStop {
-  const TransitStop({required this.id, required this.name, required this.lat, required this.lon, required this.tags});
+  const TransitStop({required this.id, required this.name, required this.lat, required this.lon, required this.tags, this.scheduleKey});
   final String id;
+  final String? scheduleKey;
   final String name;
   final double lat;
   final double lon;
@@ -56,6 +57,7 @@ class TransitStop {
     if (lat is! num || lon is! num) throw const FormatException('Stop has no coordinates');
     return TransitStop(
       id: 'transitland/${e['id'] ?? e['onestop_id'] ?? '${lat}_${lon}'}',
+      scheduleKey: e['id']?.toString() ?? (e['onestop_id']?.toString().isNotEmpty == true ? e['onestop_id'].toString() : null),
       name: (e['stop_name'] ?? e['name'] ?? e['stop_code'] ?? 'Unnamed transit stop').toString(),
       lat: lat.toDouble(),
       lon: lon.toDouble(),
@@ -92,6 +94,52 @@ class TransitRoute {
   }
 }
 
+class TransitDeparture {
+  const TransitDeparture({
+    required this.route,
+    required this.destination,
+    required this.scheduledTime,
+    required this.estimatedTime,
+    required this.operator,
+    required this.isRealtime,
+    required this.status,
+  });
+
+  final String route;
+  final String destination;
+  final String scheduledTime;
+  final String? estimatedTime;
+  final String operator;
+  final bool isRealtime;
+  final String status;
+
+  String get displayTime => _clockTime(estimatedTime ?? scheduledTime);
+
+  static String _clockTime(String value) {
+    if (value.isEmpty) return 'Time unavailable';
+    final time = value.length >= 19 && value.contains('T') ? value.substring(11, 19) : value;
+    return time.length >= 5 ? time.substring(0, 5) : time;
+  }
+
+  factory TransitDeparture.fromJson(Map<String, dynamic> json) {
+    final trip = Map<String, dynamic>.from(json['trip'] as Map? ?? {});
+    final routeData = Map<String, dynamic>.from(trip['route'] as Map? ?? {});
+    final departure = Map<String, dynamic>.from(json['departure'] as Map? ?? {});
+    final scheduled = (departure['scheduled_local'] ?? departure['scheduled'] ?? json['departure_time'] ?? json['arrival_time'] ?? '').toString();
+    final estimated = (departure['estimated_local'] ?? departure['estimated'] ?? '').toString();
+    final relationship = (json['schedule_relationship'] ?? trip['schedule_relationship'] ?? '').toString();
+    return TransitDeparture(
+      route: (routeData['route_short_name'] ?? routeData['route_long_name'] ?? routeData['route_id'] ?? 'Transit').toString(),
+      destination: (json['stop_headsign'] ?? trip['trip_headsign'] ?? 'Destination not listed').toString(),
+      scheduledTime: scheduled,
+      estimatedTime: estimated.isEmpty ? null : estimated,
+      operator: (routeData['agency'] is Map ? (routeData['agency']['agency_name'] ?? '') : '').toString(),
+      isRealtime: estimated.isNotEmpty,
+      status: relationship,
+    );
+  }
+}
+
 class GlobalTransitService {
   GlobalTransitService({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
@@ -119,6 +167,22 @@ class GlobalTransitService {
       try { places.add(TransitPlace.fromPhoton(feature)); } catch (_) { /* Ignore malformed geocoder results. */ }
     }
     return places;
+  }
+
+  Future<List<TransitDeparture>> departuresForStop(TransitStop stop) async {
+    final key = stop.scheduleKey;
+    if (key == null || key.isEmpty) return const [];
+    final encodedKey = Uri.encodeComponent(key);
+    final data = await _transitlandGet('/stops/$encodedKey/departures', {
+      'relative_date': 'TODAY',
+      'next': '43200',
+      'limit': '25',
+      'include_alerts': 'true',
+    });
+    final stops = (data['stops'] as List? ?? []).whereType<Map<String, dynamic>>();
+    if (stops.isEmpty) return const [];
+    final raw = (stops.first['departures'] as List? ?? []).whereType<Map<String, dynamic>>();
+    return raw.map(TransitDeparture.fromJson).where((item) => item.scheduledTime.isNotEmpty || item.estimatedTime != null).toList();
   }
 
   Future<List<TransitStop>> nearbyStops(double lat, double lon, {int radius = 1200}) async {
