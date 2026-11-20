@@ -58,7 +58,6 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       final p = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)));
       if (!mounted) return;
       setState(() { _position = p; _place = 'Nearby public transport'; });
-      _map.move(LatLng(p.latitude, p.longitude), 15);
       await _loadNearby();
       if (_search.text.trim().isNotEmpty) await _searchRoutes();
     } catch (e) {
