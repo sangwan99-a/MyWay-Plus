@@ -25,7 +25,7 @@ Then press `w` for web, `a` for Android, or `i` for the iOS simulator (macOS wit
 - React Native Web for browser support.
 - Three.js / React Three Fiber for the shared 3D transit world.
 - Platform-specific 3D Canvas adapters: web renderer with Bloom, Noise and Vignette; native renderer tuned for mobile GPU budgets.
-- Reanimated and Expo native modules for platform interactions.
+- Expo native modules and platform-specific adapters for native interactions.
 
 ## Design direction
 
@@ -37,7 +37,7 @@ The repository now contains the universal Expo foundation and first cross-platfo
 
 ## Next milestones
 
-1. Verify Expo SDK package compatibility with `npx expo install --fix` and run web, Android and iOS development builds.
+1. Verify Expo SDK package compatibility with `npx expo install --check`, then run web, Android and iOS development builds.
 2. Connect authoritative Transport Canberra / ACT open-data sources.
 3. Implement map, stop discovery, live arrivals, journey alternatives and accessible routing.
 4. Add secure accounts, favourites, travel history, native notifications and supported payment integrations.

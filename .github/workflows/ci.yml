@@ -1,0 +1,27 @@
+name: MyWay+ CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, redesign/universal-expo]
+
+jobs:
+  validate:
+    name: Validate Expo app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: Export web bundle
+        run: npx expo export --platform web
