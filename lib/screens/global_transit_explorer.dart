@@ -225,7 +225,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             RichAttributionWidget(attributions: [TextSourceAttribution('© OpenStreetMap contributors', onTap: () {})]),
           ],
         )),
-        Container(color: _panel, padding: const EdgeInsets.fromLTRB(16, 12, 16, 18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Container(color: _panel, constraints: const BoxConstraints(maxHeight: 360), padding: const EdgeInsets.fromLTRB(16, 12, 16, 18), child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(children: [const Expanded(child: Text('Nearby bus stops', style: TextStyle(color: _paper, fontSize: 17, fontWeight: FontWeight.w700))), if (_loading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _lime)), Text('${_stops.length} found', style: const TextStyle(color: _muted, fontSize: 11))]),
           const SizedBox(height: 8),
           if (_stops.isEmpty && !_loading) Text(_searched ? 'No mapped bus stops found nearby. Try a wider area or another route.' : 'Search for any city above, or use the location button to find buses near you.', style: const TextStyle(color: _muted, fontSize: 12)),
@@ -256,7 +256,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
                   Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: const Color(0xFF252B1D), borderRadius: BorderRadius.circular(6)), child: Text(d.route, style: const TextStyle(color: _lime, fontSize: 10, fontWeight: FontWeight.w700))),
                   const SizedBox(width: 8),
                   Expanded(child: Text(d.destination, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _paper, fontSize: 11))),
-                  Text(d.isRealtime ? 'LIVE UPDATE' : 'SCHEDULED', style: TextStyle(color: d.isRealtime ? _lime : _muted, fontSize: 8, fontWeight: FontWeight.w800)),
+                  Text(d.isRealtime ? 'REAL-TIME' : 'SCHEDULED', style: TextStyle(color: d.isRealtime ? _lime : _muted, fontSize: 8, fontWeight: FontWeight.w800)),
                 ]),
               )),
           ],
@@ -265,8 +265,8 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             ..._routes.take(5).map((r) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: CircleAvatar(backgroundColor: const Color(0xFF252B1D), child: Text(r.ref.isEmpty ? 'BUS' : r.ref, style: const TextStyle(color: _lime, fontSize: 11))), title: Text(r.name, style: const TextStyle(color: _paper, fontSize: 12)), subtitle: Text(r.operator, style: const TextStyle(color: _muted, fontSize: 10)))),
           ],
           const SizedBox(height: 6),
-          const Text('Transitland GTFS schedules and OpenStreetMap mapped stops. Live estimates appear only when an operator supplies matching GTFS Realtime updates; vehicle GPS is not shown yet.', style: TextStyle(color: _muted, fontSize: 10)),
-        ])),
+          const Text('Transitland GTFS schedules and OpenStreetMap mapped stops. Real-time estimates appear only when an operator supplies matching GTFS Realtime updates; vehicle GPS is not shown yet.', style: TextStyle(color: _muted, fontSize: 10)),
+        ]))),
       ])),
     );
   }
