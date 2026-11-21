@@ -245,7 +245,6 @@ class GlobalTransitService {
         .toList();
     final vehicles = <TransitVehicle>[];
     for (final feed in feeds) {
-      final urls = Map<String, dynamic>.from(feed['urls'] as Map? ?? {});
       final feedKey = (feed['onestop_id'] ?? feed['id'] ?? '').toString();
       if (feedKey.isEmpty) continue;
       try {
