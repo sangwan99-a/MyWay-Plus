@@ -129,11 +129,12 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
 
   Future<void> _refreshVehicles() async {
     final center = _activeCenter;
-    if (center == null) return;
-    if (mounted) setState(() => _loadingVehicles = true);
+    if (center == null || _loadingVehicles) return;
+    final requestId = ++_vehicleRequestId;
+    setState(() => _loadingVehicles = true);
     try {
       final vehicles = await _service.nearbyVehicles(center.latitude, center.longitude);
-      if (!mounted) return;
+      if (!mounted || requestId != _vehicleRequestId) return;
       setState(() {
         _vehicles = vehicles;
         _loadingVehicles = false;
@@ -141,7 +142,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             ? 'No current vehicle positions are published for this area.'
             : null;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted || requestId != _vehicleRequestId) return;
       setState(() {
         _loadingVehicles = false;
