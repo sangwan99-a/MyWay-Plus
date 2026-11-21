@@ -34,6 +34,12 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   bool _loadingVehicles = false;
   List<TransitServiceAlert> _alerts = [];
   bool _loadingAlerts = false;
+  List<TransitTripUpdate> _tripUpdates = [];
+  bool _loadingTripUpdates = false;
+  String? _tripUpdateNotice;
+  int _tripUpdateRequestId = 0;
+  Timer? _tripUpdateRefreshTimer;
+
   String? _alertNotice;
   int _alertRequestId = 0;
   Timer? _alertRefreshTimer;
@@ -60,6 +66,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   void dispose() {
     _vehicleRefreshTimer?.cancel();
     _alertRefreshTimer?.cancel();
+    _tripUpdateRefreshTimer?.cancel();
     _search.dispose();
     _placeSearch.dispose();
     _service.dispose();
@@ -96,6 +103,9 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       _alertRequestId++;
       _loadingAlerts = false;
       _alerts = [];
+      _tripUpdateRequestId++;
+      _loadingTripUpdates = false;
+      _tripUpdates = [];
       _selectedStop = null;
       _departures = [];
       _searched = false;
@@ -107,6 +117,8 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
     _startVehicleRefresh();
     await _refreshAlerts();
     _startAlertRefresh();
+    await _refreshTripUpdates();
+    _startTripUpdateRefresh();
     if (_search.text.trim().isNotEmpty) await _searchRoutes();
   }
 
@@ -123,13 +135,15 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       }
       final p = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)));
       if (!mounted) return;
-      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _vehicles = []; _vehicleRequestId++; _loadingVehicles = false; _alertRequestId++; _loadingAlerts = false; _alerts = []; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
+      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _vehicles = []; _vehicleRequestId++; _loadingVehicles = false; _alertRequestId++; _loadingAlerts = false; _alerts = []; _tripUpdateRequestId++; _loadingTripUpdates = false; _tripUpdates = []; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
       _map.move(LatLng(p.latitude, p.longitude), 15);
       await _loadNearby();
       await _refreshVehicles();
       _startVehicleRefresh();
       await _refreshAlerts();
       _startAlertRefresh();
+      await _refreshTripUpdates();
+      _startTripUpdateRefresh();
       if (_search.text.trim().isNotEmpty) await _searchRoutes();
     } catch (e) {
       if (mounted) setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
@@ -189,6 +203,36 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       setState(() {
         _loadingAlerts = false;
         _alertNotice = 'Service alert feed unavailable right now.';
+      });
+    }
+  }
+
+
+  void _startTripUpdateRefresh() {
+    _tripUpdateRefreshTimer?.cancel();
+    _tripUpdateRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) => _refreshTripUpdates());
+  }
+
+  Future<void> _refreshTripUpdates() async {
+    final center = _activeCenter;
+    if (center == null || _loadingTripUpdates) return;
+    final requestId = ++_tripUpdateRequestId;
+    setState(() => _loadingTripUpdates = true);
+    try {
+      final updates = await _service.nearbyTripUpdates(center.latitude, center.longitude);
+      if (!mounted || requestId != _tripUpdateRequestId) return;
+      setState(() {
+        _tripUpdates = updates;
+        _loadingTripUpdates = false;
+        _tripUpdateNotice = updates.isEmpty
+            ? 'No current trip predictions are published for this area.'
+            : null;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _tripUpdateRequestId) return;
+      setState(() {
+        _loadingTripUpdates = false;
+        _tripUpdateNotice = 'Real-time trip updates are unavailable right now.';
       });
     }
   }
@@ -389,6 +433,46 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
               ]),
             );
           }),
+
+          const SizedBox(height: 12),
+          Row(children: [
+            const Expanded(child: Text('REAL-TIME TRIP UPDATES', style: TextStyle(color: _lime, fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w800))),
+            if (_loadingTripUpdates) const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: _lime)),
+            Text('${_tripUpdates.length} updates', style: const TextStyle(color: _muted, fontSize: 10)),
+            IconButton(onPressed: _refreshTripUpdates, icon: const Icon(Icons.refresh, color: _muted, size: 17), tooltip: 'Refresh trip predictions', visualDensity: VisualDensity.compact),
+          ]),
+          if (_tripUpdates.isEmpty && !_loadingTripUpdates)
+            Text(_tripUpdateNotice ?? 'No live trip predictions published.', style: const TextStyle(color: _muted, fontSize: 11)),
+          ..._tripUpdates.take(8).map((update) {
+            final canceled = update.isCancelled;
+            final skipped = update.isSkipped;
+            final delay = update.delaySeconds;
+            final eventTime = update.predictedTime?.toLocal();
+            final timeLabel = eventTime == null
+                ? (delay == null ? 'Prediction time unavailable' : '${delay >= 0 ? '+' : ''}${(delay / 60).round()} min delay')
+                : '${eventTime.hour.toString().padLeft(2, '0')}:${eventTime.minute.toString().padLeft(2, '0')}';
+            final status = canceled ? 'CANCELLED' : skipped ? 'STOP SKIPPED' : delay == null ? 'LIVE UPDATE' : delay == 0 ? 'ON TIME' : '${delay > 0 ? '+' : ''}${(delay / 60).round()} MIN';
+            final accent = canceled || skipped ? const Color(0xFFFF7777) : delay != null && delay > 120 ? const Color(0xFFFFC36B) : _lime;
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: _line)),
+              child: Row(children: [
+                SizedBox(width: 58, child: Text(timeLabel, style: const TextStyle(color: _paper, fontSize: 12, fontWeight: FontWeight.w700))),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(update.routeId.isEmpty ? 'Trip ${update.tripId.isEmpty ? 'update' : update.tripId}' : 'Route ${update.routeId}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _paper, fontSize: 11, fontWeight: FontWeight.w700)),
+                  Text([
+                    if (update.stopId.isNotEmpty) 'Stop ${update.stopId}',
+                    if (update.headsign.isNotEmpty) update.headsign,
+                    update.feedName,
+                  ].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 9)),
+                ])),
+                const SizedBox(width: 6),
+                Text(status, style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800)),
+              ]),
+            );
+          }),
           if (_selectedStop != null) ...[
             const SizedBox(height: 12),
             Row(children: [
@@ -417,7 +501,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             ..._routes.take(5).map((r) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: CircleAvatar(backgroundColor: const Color(0xFF252B1D), child: Text(r.ref.isEmpty ? 'BUS' : r.ref, style: const TextStyle(color: _lime, fontSize: 11))), title: Text(r.name, style: const TextStyle(color: _paper, fontSize: 12)), subtitle: Text(r.operator, style: const TextStyle(color: _muted, fontSize: 10)))),
           ],
           const SizedBox(height: 6),
-          const Text('Transitland GTFS schedules, mapped stops and operator-published GTFS Realtime vehicle positions. Vehicle markers refresh every 45 seconds and service alerts every 90 seconds when feeds are available; coverage varies by operator.', style: TextStyle(color: _muted, fontSize: 10)),
+          const Text('Transitland GTFS schedules, mapped stops and operator-published GTFS Realtime vehicle positions. Vehicle markers refresh every 45 seconds and service alerts every 90 seconds and trip updates every 60 seconds when feeds are available; coverage varies by operator.', style: TextStyle(color: _muted, fontSize: 10)),
         ]))),
       ])),
     );
