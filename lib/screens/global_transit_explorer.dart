@@ -32,6 +32,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   List<TransitRoute> _routes = [];
   List<TransitVehicle> _vehicles = [];
   bool _loadingVehicles = false;
+  int _vehicleRequestId = 0;
   String? _vehicleNotice;
   Timer? _vehicleRefreshTimer;
   TransitStop? _selectedStop;
@@ -83,6 +84,8 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       _stops = [];
       _routes = [];
       _vehicles = [];
+      _vehicleRequestId++;
+      _loadingVehicles = false;
       _selectedStop = null;
       _departures = [];
       _searched = false;
@@ -108,7 +111,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       }
       final p = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)));
       if (!mounted) return;
-      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _vehicles = []; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
+      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _vehicles = []; _vehicleRequestId++; _loadingVehicles = false; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
       _map.move(LatLng(p.latitude, p.longitude), 15);
       await _loadNearby();
       await _refreshVehicles();
@@ -139,7 +142,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             : null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _vehicleRequestId) return;
       setState(() {
         _loadingVehicles = false;
         _vehicleNotice = 'Live vehicle feed unavailable right now.';
