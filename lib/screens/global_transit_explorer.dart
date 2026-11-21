@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -29,6 +30,10 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   bool _searchingPlaces = false;
   List<TransitStop> _stops = [];
   List<TransitRoute> _routes = [];
+  List<TransitVehicle> _vehicles = [];
+  bool _loadingVehicles = false;
+  String? _vehicleNotice;
+  Timer? _vehicleRefreshTimer;
   TransitStop? _selectedStop;
   List<TransitDeparture> _departures = [];
   bool _loadingDepartures = false;
@@ -46,6 +51,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
 
   @override
   void dispose() {
+    _vehicleRefreshTimer?.cancel();
     _search.dispose();
     _placeSearch.dispose();
     _service.dispose();
@@ -76,6 +82,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       _placeResults = [];
       _stops = [];
       _routes = [];
+      _vehicles = [];
       _selectedStop = null;
       _departures = [];
       _searched = false;
@@ -83,6 +90,8 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
     });
     _map.move(point, 13);
     await _loadNearby();
+    await _refreshVehicles();
+    _startVehicleRefresh();
     if (_search.text.trim().isNotEmpty) await _searchRoutes();
   }
 
@@ -99,12 +108,42 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       }
       final p = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)));
       if (!mounted) return;
-      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
+      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _vehicles = []; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
       _map.move(LatLng(p.latitude, p.longitude), 15);
       await _loadNearby();
+      await _refreshVehicles();
+      _startVehicleRefresh();
       if (_search.text.trim().isNotEmpty) await _searchRoutes();
     } catch (e) {
       if (mounted) setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
+    }
+  }
+
+  void _startVehicleRefresh() {
+    _vehicleRefreshTimer?.cancel();
+    _vehicleRefreshTimer = Timer.periodic(const Duration(seconds: 45), (_) => _refreshVehicles());
+  }
+
+  Future<void> _refreshVehicles() async {
+    final center = _activeCenter;
+    if (center == null) return;
+    if (mounted) setState(() => _loadingVehicles = true);
+    try {
+      final vehicles = await _service.nearbyVehicles(center.latitude, center.longitude);
+      if (!mounted) return;
+      setState(() {
+        _vehicles = vehicles;
+        _loadingVehicles = false;
+        _vehicleNotice = vehicles.isEmpty
+            ? 'No current vehicle positions are published for this area.'
+            : null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingVehicles = false;
+        _vehicleNotice = 'Live vehicle feed unavailable right now.';
+      });
     }
   }
 
@@ -221,6 +260,26 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             MarkerLayer(markers: [
               if (_activeCenter != null) Marker(point: center, width: 42, height: 42, child: Container(decoration: BoxDecoration(color: _lime, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)), child: Icon(_manualCenter == null ? Icons.person_pin_circle : Icons.location_city, color: _bg))),
               ..._stops.map((s) => Marker(point: LatLng(s.lat, s.lon), width: 34, height: 34, child: Tooltip(message: s.name, child: Container(decoration: BoxDecoration(color: _panel, shape: BoxShape.circle, border: Border.all(color: _lime, width: 1.5)), child: const Icon(Icons.directions_bus, color: _lime, size: 17))))),
+              ..._vehicles.map((v) => Marker(
+                point: LatLng(v.latitude, v.longitude),
+                width: 38,
+                height: 38,
+                child: Tooltip(
+                  message: [
+                    v.route.isEmpty ? 'Live vehicle' : 'Route ${v.route}',
+                    if (v.label.isNotEmpty) v.label,
+                    v.timestamp == null ? 'Timestamp unavailable' : 'Updated ${v.timestamp!.toLocal()}',
+                    v.feedName,
+                  ].join(' · '),
+                  child: Transform.rotate(
+                    angle: (v.bearing ?? 0) * 3.141592653589793 / 180,
+                    child: Container(
+                      decoration: BoxDecoration(color: const Color(0xFFB7E7FF), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 5)]),
+                      child: const Icon(Icons.directions_bus, color: Color(0xFF101820), size: 20),
+                    ),
+                  ),
+                ),
+              )),
             ]),
             RichAttributionWidget(attributions: [TextSourceAttribution('© OpenStreetMap contributors', onTap: () {})]),
           ],
@@ -237,6 +296,15 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
               const Spacer(), Text('${s.lat.toStringAsFixed(4)}, ${s.lon.toStringAsFixed(4)}', style: const TextStyle(color: _muted, fontSize: 9)),
             ])));
           })),
+          const SizedBox(height: 12),
+          Row(children: [
+            const Expanded(child: Text('LIVE VEHICLES', style: TextStyle(color: _lime, fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w800))),
+            if (_loadingVehicles) const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: _lime)),
+            Text('${_vehicles.length} on map', style: const TextStyle(color: _muted, fontSize: 10)),
+            IconButton(onPressed: _refreshVehicles, icon: const Icon(Icons.refresh, color: _muted, size: 17), tooltip: 'Refresh live vehicles', visualDensity: VisualDensity.compact),
+          ]),
+          if (_vehicles.isEmpty && !_loadingVehicles)
+            Text(_vehicleNotice ?? 'No current vehicle positions are available.', style: const TextStyle(color: _muted, fontSize: 11)),
           if (_selectedStop != null) ...[
             const SizedBox(height: 12),
             Row(children: [
@@ -265,7 +333,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             ..._routes.take(5).map((r) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: CircleAvatar(backgroundColor: const Color(0xFF252B1D), child: Text(r.ref.isEmpty ? 'BUS' : r.ref, style: const TextStyle(color: _lime, fontSize: 11))), title: Text(r.name, style: const TextStyle(color: _paper, fontSize: 12)), subtitle: Text(r.operator, style: const TextStyle(color: _muted, fontSize: 10)))),
           ],
           const SizedBox(height: 6),
-          const Text('Transitland GTFS schedules and OpenStreetMap mapped stops. Real-time estimates appear only when an operator supplies matching GTFS Realtime updates; vehicle GPS is not shown yet.', style: TextStyle(color: _muted, fontSize: 10)),
+          const Text('Transitland GTFS schedules, mapped stops and operator-published GTFS Realtime vehicle positions. Vehicle markers refresh every 45 seconds when feeds are available; coverage varies by operator.', style: TextStyle(color: _muted, fontSize: 10)),
         ]))),
       ])),
     );
