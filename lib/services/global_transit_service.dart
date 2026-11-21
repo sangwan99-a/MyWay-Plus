@@ -198,6 +198,125 @@ class TransitVehicle {
   }
 }
 
+
+class TransitServiceAlert {
+  const TransitServiceAlert({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.cause,
+    required this.effect,
+    required this.severity,
+    required this.routes,
+    required this.stops,
+    required this.feedName,
+    required this.feedId,
+    required this.updatedAt,
+    this.startsAt,
+    this.endsAt,
+    this.url,
+  });
+
+  final String id;
+  final String title;
+  final String description;
+  final String cause;
+  final String effect;
+  final String severity;
+  final List<String> routes;
+  final List<String> stops;
+  final String feedName;
+  final String feedId;
+  final DateTime? updatedAt;
+  final DateTime? startsAt;
+  final DateTime? endsAt;
+  final String? url;
+
+  static String _translation(dynamic value) {
+    if (value is! Map) return '';
+    final translations = value['translation'];
+    if (translations is! List) return '';
+    for (final item in translations) {
+      if (item is Map && (item['text'] ?? '').toString().trim().isNotEmpty) {
+        return item['text'].toString().trim();
+      }
+    }
+    return '';
+  }
+
+  static DateTime? _epoch(dynamic value) {
+    if (value == null || value.toString().isEmpty) return null;
+    final seconds = int.tryParse(value.toString());
+    return seconds == null ? null : DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+  }
+
+  factory TransitServiceAlert.fromEntity(
+    Map<String, dynamic> entity,
+    String feedName,
+    String feedId,
+    DateTime? updatedAt,
+  ) {
+    final alert = Map<String, dynamic>.from(entity['alert'] as Map? ?? {});
+    final periods = (alert['activePeriod'] as List? ?? []).whereType<Map>().toList();
+    DateTime? startsAt;
+    DateTime? endsAt;
+    for (final period in periods) {
+      final start = _epoch(period['start']);
+      final end = _epoch(period['end']);
+      if (start != null && (startsAt == null || start.isBefore(startsAt))) startsAt = start;
+      if (end != null && (endsAt == null || end.isAfter(endsAt))) endsAt = end;
+    }
+    final now = DateTime.now().toUtc();
+    final active = periods.isEmpty ||
+        periods.any((period) {
+          final start = _epoch(period['start']);
+          final end = _epoch(period['end']);
+          return (start == null || !now.isBefore(start)) && (end == null || !now.isAfter(end));
+        });
+    if (!active) throw const FormatException('Alert is outside its active period');
+
+    final informed = (alert['informedEntity'] as List? ?? []).whereType<Map>().toList();
+    final routes = <String>{};
+    final stops = <String>{};
+    for (final item in informed) {
+      final route = (item['routeId'] ?? item['route_id'] ?? '').toString();
+      final stop = (item['stopId'] ?? item['stop_id'] ?? '').toString();
+      if (route.isNotEmpty) routes.add(route);
+      if (stop.isNotEmpty) stops.add(stop);
+    }
+    final cause = (alert['cause'] ?? 'UNKNOWN_CAUSE').toString();
+    final effect = (alert['effect'] ?? 'UNKNOWN_EFFECT').toString();
+    final severity = (alert['severityLevel'] ?? alert['severity_level'] ?? 'UNKNOWN_SEVERITY').toString();
+    final title = _translation(alert['headerText']);
+    final description = _translation(alert['descriptionText']);
+    final link = _translation(alert['url']);
+    final id = (entity['id'] ?? '').toString();
+    return TransitServiceAlert(
+      id: '$feedId:${id.isEmpty ? '${title}_${description}'.hashCode : id}',
+      title: title.isEmpty ? _humanize(effect) : title,
+      description: description,
+      cause: _humanize(cause),
+      effect: _humanize(effect),
+      severity: severity,
+      routes: routes.toList(),
+      stops: stops.toList(),
+      feedName: feedName,
+      feedId: feedId,
+      updatedAt: updatedAt,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      url: link.isEmpty ? null : link,
+    );
+  }
+
+  static String _humanize(String value) {
+    return value.toLowerCase().replaceAll('_', ' ').split(' ')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+}
+
 class GlobalTransitService {
   GlobalTransitService({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
@@ -272,6 +391,70 @@ class GlobalTransitService {
       unique.putIfAbsent(vehicle.id, () => vehicle);
     }
     return unique.values.toList();
+  }
+
+
+  Future<List<TransitServiceAlert>> nearbyAlerts(double lat, double lon, {int radius = 10000}) async {
+    final data = await _transitlandGet('/feeds', {
+      'spec': 'gtfs-rt',
+      'lat': '$lat',
+      'lon': '$lon',
+      'radius': '${radius.clamp(1, 10000)}',
+      'limit': '50',
+    });
+    final feeds = (data['feeds'] as List? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .where((feed) {
+          final urls = Map<String, dynamic>.from(feed['urls'] as Map? ?? {});
+          return (urls['realtime_alerts'] ?? '').toString().isNotEmpty;
+        })
+        .take(10)
+        .toList();
+    final alerts = <TransitServiceAlert>[];
+    for (final feed in feeds) {
+      final feedKey = (feed['onestop_id'] ?? feed['id'] ?? '').toString();
+      if (feedKey.isEmpty) continue;
+      try {
+        final feedData = await _transitlandGet(
+          '/feeds/${Uri.encodeComponent(feedKey)}/download_latest_rt/alerts.json',
+          const {},
+        );
+        final header = Map<String, dynamic>.from(feedData['header'] as Map? ?? {});
+        final updatedAt = TransitServiceAlert._epoch(header['timestamp']);
+        final entities = (feedData['entity'] as List? ?? []).whereType<Map<String, dynamic>>();
+        for (final entity in entities) {
+          if (entity['alert'] is! Map) continue;
+          try {
+            alerts.add(TransitServiceAlert.fromEntity(
+              entity,
+              (feed['name'] ?? feedKey).toString(),
+              feedKey,
+              updatedAt,
+            ));
+          } catch (_) {
+            // Ignore expired or malformed alerts, retaining valid feed entries.
+          }
+        }
+      } catch (_) {
+        // Restricted or unavailable feeds must not block alerts from other agencies.
+      }
+    }
+    final unique = <String, TransitServiceAlert>{};
+    for (final alert in alerts) {
+      unique.putIfAbsent(alert.id, () => alert);
+    }
+    final result = unique.values.toList();
+    result.sort((a, b) {
+      int rank(String severity) {
+        final value = severity.toUpperCase();
+        if (value == 'SEVERE') return 0;
+        if (value == 'WARNING') return 1;
+        if (value == 'INFO') return 2;
+        return 3;
+      }
+      return rank(a.severity).compareTo(rank(b.severity));
+    });
+    return result;
   }
 
   Future<List<TransitDeparture>> departuresForStop(TransitStop stop) async {
