@@ -235,12 +235,17 @@ class GlobalTransitService {
       'radius': '${radius.clamp(1, 10000)}',
       'limit': '50',
     });
-    final feeds = (data['feeds'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+    final feeds = (data['feeds'] as List? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .where((feed) {
+          final urls = Map<String, dynamic>.from(feed['urls'] as Map? ?? {});
+          return (urls['realtime_vehicle_positions'] ?? '').toString().isNotEmpty;
+        })
+        .take(10)
+        .toList();
     final vehicles = <TransitVehicle>[];
-    for (final feed in feeds.take(10)) {
+    for (final feed in feeds) {
       final urls = Map<String, dynamic>.from(feed['urls'] as Map? ?? {});
-      final realtimeUrl = (urls['realtime_vehicle_positions'] ?? '').toString();
-      if (realtimeUrl.isEmpty) continue;
       final feedKey = (feed['onestop_id'] ?? feed['id'] ?? '').toString();
       if (feedKey.isEmpty) continue;
       try {
