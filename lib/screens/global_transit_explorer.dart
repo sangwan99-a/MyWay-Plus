@@ -449,9 +449,10 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             final delay = update.delaySeconds;
             final eventTime = update.predictedTime?.toLocal();
             final timeLabel = eventTime == null
-                ? (delay == null ? 'Prediction time unavailable' : '${delay >= 0 ? '+' : ''}${(delay / 60).round()} min delay')
+                ? (delay == null ? 'Time unavailable' : delay == 0 ? 'On schedule' : delay > 0 ? '+${(delay / 60).round()} min' : '${(delay.abs() / 60).round()} min early')
                 : '${eventTime.hour.toString().padLeft(2, '0')}:${eventTime.minute.toString().padLeft(2, '0')}';
-            final status = canceled ? 'CANCELLED' : skipped ? 'STOP SKIPPED' : delay == null ? 'LIVE UPDATE' : delay == 0 ? 'ON TIME' : '${delay > 0 ? '+' : ''}${(delay / 60).round()} MIN';
+            final noData = update.relationship.toUpperCase() == 'NO_DATA';
+            final status = canceled ? 'CANCELLED' : skipped ? 'STOP SKIPPED' : noData ? 'NO DATA' : delay == null ? 'LIVE UPDATE' : delay == 0 ? 'ON TIME' : delay > 0 ? '+${(delay / 60).round()} MIN' : '${(delay.abs() / 60).round()} MIN EARLY';
             final accent = canceled || skipped ? const Color(0xFFFF7777) : delay != null && delay > 120 ? const Color(0xFFFFC36B) : _lime;
             return Container(
               width: double.infinity,
