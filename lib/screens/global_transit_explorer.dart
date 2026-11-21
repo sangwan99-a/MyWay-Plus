@@ -128,6 +128,8 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       await _loadNearby();
       await _refreshVehicles();
       _startVehicleRefresh();
+      await _refreshAlerts();
+      _startAlertRefresh();
       if (_search.text.trim().isNotEmpty) await _searchRoutes();
     } catch (e) {
       if (mounted) setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
@@ -383,7 +385,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
                 if (scope.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 5), child: Text(scope, style: const TextStyle(color: _muted, fontSize: 10))),
                 Padding(padding: const EdgeInsets.only(top: 4), child: Text('${alert.cause} · ${alert.effect} · ${alert.feedName}', style: const TextStyle(color: _muted, fontSize: 9))),
                 if (alert.endsAt != null) Padding(padding: const EdgeInsets.only(top: 3), child: Text('Until ${alert.endsAt!.toLocal()}', style: const TextStyle(color: _muted, fontSize: 9))),
-                if (alert.url != null) Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () { /* URL is shown for reference; opening is handled by the platform browser. */ }, child: const Text('Agency details'))),
+                if (alert.url != null) Padding(padding: const EdgeInsets.only(top: 3), child: Text(alert.url!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 9))),
               ]),
             );
           }),
