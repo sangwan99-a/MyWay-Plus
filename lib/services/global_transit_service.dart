@@ -140,6 +140,64 @@ class TransitDeparture {
   }
 }
 
+class TransitVehicle {
+  const TransitVehicle({
+    required this.id,
+    required this.route,
+    required this.label,
+    required this.latitude,
+    required this.longitude,
+    required this.feedName,
+    this.bearing,
+    this.speed,
+    this.timestamp,
+  });
+
+  final String id;
+  final String route;
+  final String label;
+  final double latitude;
+  final double longitude;
+  final String feedName;
+  final double? bearing;
+  final double? speed;
+  final DateTime? timestamp;
+
+  factory TransitVehicle.fromGeoJson(Map<String, dynamic> feature, String feedName) {
+    final geometry = Map<String, dynamic>.from(feature['geometry'] as Map? ?? {});
+    final coordinates = geometry['coordinates'] as List? ?? const [];
+    if (coordinates.length < 2 || coordinates[0] is! num || coordinates[1] is! num) {
+      throw const FormatException('Vehicle has no valid coordinates');
+    }
+    final properties = Map<String, dynamic>.from(feature['properties'] as Map? ?? {});
+    final nested = Map<String, dynamic>.from(properties['vehicle'] as Map? ?? {});
+    final trip = Map<String, dynamic>.from(properties['trip'] as Map? ?? nested['trip'] as Map? ?? {});
+    final id = (nested['id'] ?? properties['vehicle_id'] ?? properties['id'] ?? properties['vehicleId'] ?? '').toString();
+    final route = (properties['route_id'] ?? trip['route_id'] ?? properties['route'] ?? nested['route_id'] ?? '').toString();
+    final label = (nested['label'] ?? properties['label'] ?? properties['vehicle_label'] ?? '').toString();
+    final bearingValue = properties['bearing'] ?? nested['bearing'];
+    final speedValue = properties['speed'] ?? nested['speed'];
+    final timestampValue = properties['timestamp'] ?? nested['timestamp'];
+    DateTime? timestamp;
+    if (timestampValue is num) {
+      timestamp = DateTime.fromMillisecondsSinceEpoch(timestampValue.toInt() * 1000, isUtc: true);
+    } else if (timestampValue is String) {
+      timestamp = DateTime.tryParse(timestampValue);
+    }
+    return TransitVehicle(
+      id: id.isEmpty ? '${coordinates[0]}_${coordinates[1]}' : id,
+      route: route,
+      label: label,
+      latitude: (coordinates[1] as num).toDouble(),
+      longitude: (coordinates[0] as num).toDouble(),
+      feedName: feedName,
+      bearing: bearingValue is num ? bearingValue.toDouble() : null,
+      speed: speedValue is num ? speedValue.toDouble() : null,
+      timestamp: timestamp,
+    );
+  }
+}
+
 class GlobalTransitService {
   GlobalTransitService({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
@@ -167,6 +225,49 @@ class GlobalTransitService {
       try { places.add(TransitPlace.fromPhoton(feature)); } catch (_) { /* Ignore malformed geocoder results. */ }
     }
     return places;
+  }
+
+  Future<List<TransitVehicle>> nearbyVehicles(double lat, double lon, {int radius = 10000}) async {
+    final data = await _transitlandGet('/feeds', {
+      'spec': 'gtfs-rt',
+      'lat': '$lat',
+      'lon': '$lon',
+      'radius': '${radius.clamp(1, 10000)}',
+      'limit': '50',
+    });
+    final feeds = (data['feeds'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+    final vehicles = <TransitVehicle>[];
+    for (final feed in feeds) {
+      final urls = Map<String, dynamic>.from(feed['urls'] as Map? ?? {});
+      final realtimeUrl = (urls['realtime_vehicle_positions'] ?? '').toString();
+      if (realtimeUrl.isEmpty) continue;
+      final feedKey = (feed['onestop_id'] ?? feed['id'] ?? '').toString();
+      if (feedKey.isEmpty) continue;
+      try {
+        final feedData = await _transitlandGet(
+          '/feeds/${Uri.encodeComponent(feedKey)}/download_latest_rt/vehicle_positions.geojson',
+          const {},
+        );
+        final features = (feedData['features'] as List? ?? []).whereType<Map<String, dynamic>>();
+        for (final feature in features) {
+          try {
+            final vehicle = TransitVehicle.fromGeoJson(feature, (feed['name'] ?? feedKey).toString());
+            final age = vehicle.timestamp == null ? null : DateTime.now().toUtc().difference(vehicle.timestamp!.toUtc());
+            if (age != null && (age.isNegative || age > const Duration(minutes: 10))) continue;
+            vehicles.add(vehicle);
+          } catch (_) {
+            // Ignore malformed vehicle records while keeping valid positions.
+          }
+        }
+      } catch (_) {
+        // One unavailable or restricted operator feed must not block other feeds.
+      }
+    }
+    final unique = <String, TransitVehicle>{};
+    for (final vehicle in vehicles) {
+      unique.putIfAbsent(vehicle.id, () => vehicle);
+    }
+    return unique.values.toList();
   }
 
   Future<List<TransitDeparture>> departuresForStop(TransitStop stop) async {
