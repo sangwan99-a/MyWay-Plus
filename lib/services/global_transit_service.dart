@@ -354,8 +354,6 @@ class TransitTripUpdate {
   bool get isCancelled => relationship.toUpperCase() == 'CANCELED' || relationship.toUpperCase() == 'CANCELLED';
   bool get isSkipped => relationship.toUpperCase() == 'SKIPPED';
 
-  static dynamic _field(Map value, String camel, String snake) => value[camel] ?? value[snake];
-
   static DateTime? _eventTime(dynamic value) {
     if (value == null) return null;
     final seconds = value is num ? value.toInt() : int.tryParse(value.toString());
