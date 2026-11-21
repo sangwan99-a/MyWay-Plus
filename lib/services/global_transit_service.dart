@@ -163,7 +163,7 @@ class TransitVehicle {
   final double? speed;
   final DateTime? timestamp;
 
-  factory TransitVehicle.fromGeoJson(Map<String, dynamic> feature, String feedName) {
+  factory TransitVehicle.fromGeoJson(Map<String, dynamic> feature, String feedName, String feedId) {
     final geometry = Map<String, dynamic>.from(feature['geometry'] as Map? ?? {});
     final coordinates = geometry['coordinates'] as List? ?? const [];
     if (coordinates.length < 2 || coordinates[0] is! num || coordinates[1] is! num) {
@@ -185,7 +185,7 @@ class TransitVehicle {
       timestamp = DateTime.tryParse(timestampValue);
     }
     return TransitVehicle(
-      id: id.isEmpty ? '${coordinates[0]}_${coordinates[1]}' : id,
+      id: '$feedId:${id.isEmpty ? '${coordinates[0]}_${coordinates[1]}' : id}',
       route: route,
       label: label,
       latitude: (coordinates[1] as num).toDouble(),
@@ -237,7 +237,7 @@ class GlobalTransitService {
     });
     final feeds = (data['feeds'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
     final vehicles = <TransitVehicle>[];
-    for (final feed in feeds) {
+    for (final feed in feeds.take(10)) {
       final urls = Map<String, dynamic>.from(feed['urls'] as Map? ?? {});
       final realtimeUrl = (urls['realtime_vehicle_positions'] ?? '').toString();
       if (realtimeUrl.isEmpty) continue;
@@ -251,7 +251,7 @@ class GlobalTransitService {
         final features = (feedData['features'] as List? ?? []).whereType<Map<String, dynamic>>();
         for (final feature in features) {
           try {
-            final vehicle = TransitVehicle.fromGeoJson(feature, (feed['name'] ?? feedKey).toString());
+            final vehicle = TransitVehicle.fromGeoJson(feature, (feed['name'] ?? feedKey).toString(), feedKey);
             final age = vehicle.timestamp == null ? null : DateTime.now().toUtc().difference(vehicle.timestamp!.toUtc());
             if (age != null && (age.isNegative || age > const Duration(minutes: 10))) continue;
             vehicles.add(vehicle);
