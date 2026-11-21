@@ -14,6 +14,7 @@ jobs:
   validate:
     name: Analyze, test and build Flutter Web
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,8 +34,8 @@ jobs:
       - name: Analyze Dart code
         run: flutter analyze
 
-      - name: Run widget tests
-        run: flutter test
+      - name: Run widget and transit regression tests
+        run: flutter test --reporter expanded
 
       - name: Build production web app
         run: flutter build web --release
