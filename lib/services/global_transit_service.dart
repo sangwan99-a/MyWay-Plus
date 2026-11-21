@@ -317,6 +317,91 @@ class TransitServiceAlert {
   }
 }
 
+
+class TransitTripUpdate {
+  const TransitTripUpdate({
+    required this.id,
+    required this.tripId,
+    required this.routeId,
+    required this.stopId,
+    required this.stopSequence,
+    required this.headsign,
+    required this.relationship,
+    required this.feedName,
+    required this.feedTimestamp,
+    this.arrivalTime,
+    this.departureTime,
+    this.arrivalDelaySeconds,
+    this.departureDelaySeconds,
+  });
+
+  final String id;
+  final String tripId;
+  final String routeId;
+  final String stopId;
+  final int? stopSequence;
+  final String headsign;
+  final String relationship;
+  final String feedName;
+  final DateTime? feedTimestamp;
+  final DateTime? arrivalTime;
+  final DateTime? departureTime;
+  final int? arrivalDelaySeconds;
+  final int? departureDelaySeconds;
+
+  DateTime? get predictedTime => arrivalTime ?? departureTime;
+  int? get delaySeconds => arrivalDelaySeconds ?? departureDelaySeconds;
+  bool get isCancelled => relationship.toUpperCase() == 'CANCELED' || relationship.toUpperCase() == 'CANCELLED';
+  bool get isSkipped => relationship.toUpperCase() == 'SKIPPED';
+
+  static dynamic _field(Map value, String camel, String snake) => value[camel] ?? value[snake];
+
+  static DateTime? _eventTime(dynamic value) {
+    if (value == null) return null;
+    final seconds = value is num ? value.toInt() : int.tryParse(value.toString());
+    return seconds == null || seconds <= 0
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+  }
+
+  factory TransitTripUpdate.fromStopTime(
+    Map<String, dynamic> entity,
+    Map<String, dynamic> tripUpdate,
+    Map<String, dynamic> trip,
+    Map<String, dynamic> stopUpdate,
+    String feedName,
+    String feedId,
+    DateTime? feedTimestamp,
+  ) {
+    final arrival = Map<String, dynamic>.from(stopUpdate['arrival'] as Map? ?? {});
+    final departure = Map<String, dynamic>.from(stopUpdate['departure'] as Map? ?? {});
+    final tripRelationship = (_field(trip, 'scheduleRelationship', 'schedule_relationship') ?? '').toString();
+    final stopRelationship = (_field(stopUpdate, 'scheduleRelationship', 'schedule_relationship') ?? '').toString();
+    final relationship = stopRelationship.isNotEmpty ? stopRelationship : tripRelationship;
+    final tripId = (trip['tripId'] ?? trip['trip_id'] ?? '').toString();
+    final routeId = (trip['routeId'] ?? trip['route_id'] ?? '').toString();
+    final stopId = (stopUpdate['stopId'] ?? stopUpdate['stop_id'] ?? '').toString();
+    final sequence = stopUpdate['stopSequence'] ?? stopUpdate['stop_sequence'];
+    final id = (entity['id'] ?? '').toString();
+    final tripEntityId = (tripUpdate['id'] ?? '').toString();
+    return TransitTripUpdate(
+      id: '$feedId:${id.isEmpty ? tripEntityId : id}:$stopId:${sequence ?? ''}',
+      tripId: tripId,
+      routeId: routeId,
+      stopId: stopId,
+      stopSequence: sequence is num ? sequence.toInt() : int.tryParse(sequence?.toString() ?? ''),
+      headsign: (trip['tripHeadsign'] ?? trip['trip_headsign'] ?? '').toString(),
+      relationship: relationship,
+      feedName: feedName,
+      feedTimestamp: feedTimestamp,
+      arrivalTime: _eventTime(arrival['time']),
+      departureTime: _eventTime(departure['time']),
+      arrivalDelaySeconds: arrival['delay'] is num ? (arrival['delay'] as num).toInt() : int.tryParse(arrival['delay']?.toString() ?? ''),
+      departureDelaySeconds: departure['delay'] is num ? (departure['delay'] as num).toInt() : int.tryParse(departure['delay']?.toString() ?? ''),
+    );
+  }
+}
+
 class GlobalTransitService {
   GlobalTransitService({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
@@ -393,6 +478,89 @@ class GlobalTransitService {
     return unique.values.toList();
   }
 
+
+
+  Future<List<TransitTripUpdate>> nearbyTripUpdates(double lat, double lon, {int radius = 10000}) async {
+    final data = await _transitlandGet('/feeds', {
+      'spec': 'gtfs-rt',
+      'lat': '$lat',
+      'lon': '$lon',
+      'radius': '${radius.clamp(1, 10000)}',
+      'limit': '50',
+    });
+    final feeds = (data['feeds'] as List? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .where((feed) {
+          final urls = Map<String, dynamic>.from(feed['urls'] as Map? ?? {});
+          return (urls['realtime_trip_updates'] ?? '').toString().isNotEmpty;
+        })
+        .take(10)
+        .toList();
+    final updates = <TransitTripUpdate>[];
+    for (final feed in feeds) {
+      final feedKey = (feed['onestop_id'] ?? feed['id'] ?? '').toString();
+      if (feedKey.isEmpty) continue;
+      try {
+        final snapshot = await _transitlandGet(
+          '/feeds/${Uri.encodeComponent(feedKey)}/download_latest_rt/trip_updates.json',
+          const {},
+        );
+        final header = Map<String, dynamic>.from(snapshot['header'] as Map? ?? {});
+        final feedTimestamp = TransitServiceAlert._epoch(header['timestamp']);
+        final age = feedTimestamp == null ? null : DateTime.now().toUtc().difference(feedTimestamp);
+        if (age != null && (age.isNegative || age > const Duration(minutes: 10))) continue;
+        final entities = (snapshot['entity'] as List? ?? []).whereType<Map<String, dynamic>>();
+        for (final entity in entities) {
+          final tripUpdate = Map<String, dynamic>.from(
+            (entity['tripUpdate'] ?? entity['trip_update']) as Map? ?? {},
+          );
+          if (tripUpdate.isEmpty) continue;
+          final trip = Map<String, dynamic>.from(tripUpdate['trip'] as Map? ?? {});
+          final tripRelationship = (trip['scheduleRelationship'] ?? trip['schedule_relationship'] ?? '').toString();
+          final stopUpdates = (tripUpdate['stopTimeUpdate'] ?? tripUpdate['stop_time_update'] ?? []) as List? ?? const [];
+          if (stopUpdates.isEmpty && (tripRelationship == 'CANCELED' || tripRelationship == 'CANCELLED')) {
+            updates.add(TransitTripUpdate.fromStopTime(
+              entity, tripUpdate, trip, <String, dynamic>{}, (feed['name'] ?? feedKey).toString(), feedKey, feedTimestamp,
+            ));
+            continue;
+          }
+          for (final raw in stopUpdates) {
+            if (raw is! Map) continue;
+            try {
+              updates.add(TransitTripUpdate.fromStopTime(
+                entity,
+                tripUpdate,
+                trip,
+                Map<String, dynamic>.from(raw),
+                (feed['name'] ?? feedKey).toString(),
+                feedKey,
+                feedTimestamp,
+              ));
+            } catch (_) {
+              // Ignore malformed stop predictions but keep valid updates from this trip.
+            }
+          }
+        }
+      } catch (_) {
+        // Restricted or unavailable feeds are skipped independently.
+      }
+    }
+    final unique = <String, TransitTripUpdate>{};
+    for (final update in updates) {
+      unique.putIfAbsent(update.id, () => update);
+    }
+    final result = unique.values.toList();
+    result.sort((a, b) {
+      if (a.isCancelled != b.isCancelled) return a.isCancelled ? -1 : 1;
+      final at = a.predictedTime;
+      final bt = b.predictedTime;
+      if (at == null && bt == null) return 0;
+      if (at == null) return 1;
+      if (bt == null) return -1;
+      return at.compareTo(bt);
+    });
+    return result;
+  }
 
   Future<List<TransitServiceAlert>> nearbyAlerts(double lat, double lon, {int radius = 10000}) async {
     final data = await _transitlandGet('/feeds', {
