@@ -32,6 +32,12 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   List<TransitRoute> _routes = [];
   List<TransitVehicle> _vehicles = [];
   bool _loadingVehicles = false;
+  List<TransitServiceAlert> _alerts = [];
+  bool _loadingAlerts = false;
+  String? _alertNotice;
+  int _alertRequestId = 0;
+  Timer? _alertRefreshTimer;
+
   int _vehicleRequestId = 0;
   String? _vehicleNotice;
   Timer? _vehicleRefreshTimer;
@@ -53,6 +59,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
   @override
   void dispose() {
     _vehicleRefreshTimer?.cancel();
+    _alertRefreshTimer?.cancel();
     _search.dispose();
     _placeSearch.dispose();
     _service.dispose();
@@ -86,6 +93,9 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       _vehicles = [];
       _vehicleRequestId++;
       _loadingVehicles = false;
+      _alertRequestId++;
+      _loadingAlerts = false;
+      _alerts = [];
       _selectedStop = null;
       _departures = [];
       _searched = false;
@@ -95,6 +105,8 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
     await _loadNearby();
     await _refreshVehicles();
     _startVehicleRefresh();
+    await _refreshAlerts();
+    _startAlertRefresh();
     if (_search.text.trim().isNotEmpty) await _searchRoutes();
   }
 
@@ -111,7 +123,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       }
       final p = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)));
       if (!mounted) return;
-      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _vehicles = []; _vehicleRequestId++; _loadingVehicles = false; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
+      setState(() { _position = p; _manualCenter = null; _selectedStop = null; _departures = []; _vehicles = []; _vehicleRequestId++; _loadingVehicles = false; _alertRequestId++; _loadingAlerts = false; _alerts = []; _place = 'Nearby public transport'; _placeSearch.text = ''; _placeResults = []; });
       _map.move(LatLng(p.latitude, p.longitude), 15);
       await _loadNearby();
       await _refreshVehicles();
@@ -147,6 +159,34 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
       setState(() {
         _loadingVehicles = false;
         _vehicleNotice = 'Live vehicle feed unavailable right now.';
+      });
+    }
+  }
+
+
+  void _startAlertRefresh() {
+    _alertRefreshTimer?.cancel();
+    _alertRefreshTimer = Timer.periodic(const Duration(seconds: 90), (_) => _refreshAlerts());
+  }
+
+  Future<void> _refreshAlerts() async {
+    final center = _activeCenter;
+    if (center == null || _loadingAlerts) return;
+    final requestId = ++_alertRequestId;
+    setState(() => _loadingAlerts = true);
+    try {
+      final alerts = await _service.nearbyAlerts(center.latitude, center.longitude);
+      if (!mounted || requestId != _alertRequestId) return;
+      setState(() {
+        _alerts = alerts;
+        _loadingAlerts = false;
+        _alertNotice = alerts.isEmpty ? 'No active service alerts are published for this area.' : null;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _alertRequestId) return;
+      setState(() {
+        _loadingAlerts = false;
+        _alertNotice = 'Service alert feed unavailable right now.';
       });
     }
   }
@@ -309,6 +349,44 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
           ]),
           if (_vehicles.isEmpty && !_loadingVehicles)
             Text(_vehicleNotice ?? 'No current vehicle positions are available.', style: const TextStyle(color: _muted, fontSize: 11)),
+
+          const SizedBox(height: 12),
+          Row(children: [
+            const Expanded(child: Text('SERVICE ALERTS', style: TextStyle(color: _lime, fontSize: 9, letterSpacing: 1.5, fontWeight: FontWeight.w800))),
+            if (_loadingAlerts) const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: _lime)),
+            Text('${_alerts.length} active', style: const TextStyle(color: _muted, fontSize: 10)),
+            IconButton(onPressed: _refreshAlerts, icon: const Icon(Icons.refresh, color: _muted, size: 17), tooltip: 'Refresh service alerts', visualDensity: VisualDensity.compact),
+          ]),
+          if (_alerts.isEmpty && !_loadingAlerts)
+            Text(_alertNotice ?? 'No active service alerts.', style: const TextStyle(color: _muted, fontSize: 11)),
+          ..._alerts.take(8).map((alert) {
+            final severe = alert.severity.toUpperCase() == 'SEVERE';
+            final warning = alert.severity.toUpperCase() == 'WARNING';
+            final accent = severe ? const Color(0xFFFF7777) : warning ? const Color(0xFFFFC36B) : _lime;
+            final scope = [
+              if (alert.routes.isNotEmpty) 'Routes ${alert.routes.take(4).join(', ')}',
+              if (alert.stops.isNotEmpty) 'Stops ${alert.stops.take(4).join(', ')}',
+            ].join(' · ');
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 7),
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(11), border: Border.all(color: _line)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Icons.warning_amber_rounded, color: accent, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(alert.title, style: const TextStyle(color: _paper, fontSize: 12, fontWeight: FontWeight.w700))),
+                  Text(alert.severity.replaceAll('_', ' '), style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w800)),
+                ]),
+                if (alert.description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 5), child: Text(alert.description, style: const TextStyle(color: _paper, fontSize: 11))),
+                if (scope.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 5), child: Text(scope, style: const TextStyle(color: _muted, fontSize: 10))),
+                Padding(padding: const EdgeInsets.only(top: 4), child: Text('${alert.cause} · ${alert.effect} · ${alert.feedName}', style: const TextStyle(color: _muted, fontSize: 9))),
+                if (alert.endsAt != null) Padding(padding: const EdgeInsets.only(top: 3), child: Text('Until ${alert.endsAt!.toLocal()}', style: const TextStyle(color: _muted, fontSize: 9))),
+                if (alert.url != null) Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () { /* URL is shown for reference; opening is handled by the platform browser. */ }, child: const Text('Agency details'))),
+              ]),
+            );
+          }),
           if (_selectedStop != null) ...[
             const SizedBox(height: 12),
             Row(children: [
@@ -337,7 +415,7 @@ class _GlobalTransitExplorerState extends State<GlobalTransitExplorer> {
             ..._routes.take(5).map((r) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: CircleAvatar(backgroundColor: const Color(0xFF252B1D), child: Text(r.ref.isEmpty ? 'BUS' : r.ref, style: const TextStyle(color: _lime, fontSize: 11))), title: Text(r.name, style: const TextStyle(color: _paper, fontSize: 12)), subtitle: Text(r.operator, style: const TextStyle(color: _muted, fontSize: 10)))),
           ],
           const SizedBox(height: 6),
-          const Text('Transitland GTFS schedules, mapped stops and operator-published GTFS Realtime vehicle positions. Vehicle markers refresh every 45 seconds when feeds are available; coverage varies by operator.', style: TextStyle(color: _muted, fontSize: 10)),
+          const Text('Transitland GTFS schedules, mapped stops and operator-published GTFS Realtime vehicle positions. Vehicle markers refresh every 45 seconds and service alerts every 90 seconds when feeds are available; coverage varies by operator.', style: TextStyle(color: _muted, fontSize: 10)),
         ]))),
       ])),
     );
