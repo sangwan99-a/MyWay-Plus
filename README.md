@@ -64,3 +64,19 @@ After generating native folders with `flutter create . --platforms=web,android,i
 - [OpenStreetMap and Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API)
 
 Respect each provider's rate limits, terms, attribution and data freshness. The Transitland key is currently embedded in the Flutter client at the project owner's request for zero-config deployment; it is extractable from distributed app builds and should be rotated if abused. A backend proxy is recommended before public production use.
+
+
+### Automated validation
+
+GitHub Actions runs the Flutter stable toolchain on pushes to `main`, pull requests targeting `main`, and manual workflow dispatch. The pipeline resolves Dart packages, runs `flutter analyze`, executes the widget and transit-data model regression tests with `flutter test`, and builds the production Flutter Web bundle with `flutter build web --release`.
+
+The transit service regression suite covers Photon coordinate parsing, malformed place and vehicle records, GTFS Realtime vehicle parsing, trip predictions and cancellation/skipped-stop states, active service-alert filtering, and scheduled-versus-realtime departure display. Run the same checks locally with:
+
+```bash
+flutter pub get
+flutter analyze
+flutter test --reporter expanded
+flutter build web --release
+```
+
+A successful web build does not replace Android/iOS release validation. Native builds still require the Android SDK or macOS with Xcode, respectively.
