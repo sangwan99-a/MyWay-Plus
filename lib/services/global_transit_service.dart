@@ -373,8 +373,8 @@ class TransitTripUpdate {
   ) {
     final arrival = Map<String, dynamic>.from(stopUpdate['arrival'] as Map? ?? {});
     final departure = Map<String, dynamic>.from(stopUpdate['departure'] as Map? ?? {});
-    final tripRelationship = (_field(trip, 'scheduleRelationship', 'schedule_relationship') ?? '').toString();
-    final stopRelationship = (_field(stopUpdate, 'scheduleRelationship', 'schedule_relationship') ?? '').toString();
+    final tripRelationship = ((trip['scheduleRelationship'] ?? trip['schedule_relationship']) ?? '').toString();
+    final stopRelationship = ((stopUpdate['scheduleRelationship'] ?? stopUpdate['schedule_relationship']) ?? '').toString();
     final relationship = stopRelationship.isNotEmpty ? stopRelationship : tripRelationship;
     final tripId = (trip['tripId'] ?? trip['trip_id'] ?? '').toString();
     final routeId = (trip['routeId'] ?? trip['route_id'] ?? '').toString();
